@@ -12,6 +12,7 @@ import time
 import json
 from typing_extensions import TypedDict
 
+# This is the original code from Chroma's MCP server
 
 from chromadb.api.collection_configuration import (
     CreateCollectionConfiguration
@@ -19,7 +20,11 @@ from chromadb.api.collection_configuration import (
 from chromadb.api import EmbeddingFunction
 from chromadb.utils.embedding_functions import (
     DefaultEmbeddingFunction,
-    SentenceTransformerEmbeddingFunction,
+    CohereEmbeddingFunction,
+    OpenAIEmbeddingFunction,
+    JinaEmbeddingFunction,
+    VoyageAIEmbeddingFunction,
+    RoboflowEmbeddingFunction,
 )
 
 # Initialize FastMCP server
@@ -142,7 +147,7 @@ def get_chroma_client(args=None):
 async def chroma_list_collections(
     limit: int | None = None,
     offset: int | None = None
-) -> str:
+) -> List[str]:
     """List all collection names in the Chroma database with pagination support.
     
     Args:
@@ -150,48 +155,39 @@ async def chroma_list_collections(
         offset: Optional number of collections to skip before returning results
     
     Returns:
-        Newline-separated list of collection names, or "No collections found" if database is empty
+        List of collection names or ["__NO_COLLECTIONS_FOUND__"] if database is empty
     """
     client = get_chroma_client()
     try:
         colls = client.list_collections(limit=limit, offset=offset)
         # Safe handling: If colls is None or empty, return a special marker
         if not colls:
-            return "No collections found"
-        # Return as a newline-separated list of collection names
-        names = [coll.name for coll in colls]
-        return "\n".join(names)
+            return ["__NO_COLLECTIONS_FOUND__"]
+        # Otherwise iterate to get collection names
+        return [coll.name for coll in colls]
 
     except Exception as e:
         raise Exception(f"Failed to list collections: {str(e)}") from e
 
-def create_local_embedding_functions():
-    """Create embedding functions for local models only."""
-    return {
-        "default": DefaultEmbeddingFunction,  # all-MiniLM-L6-v2 (384 dims)
-        "mpnet-768": lambda: SentenceTransformerEmbeddingFunction(
-            model_name="sentence-transformers/all-mpnet-base-v2"
-        ),
-        "bert-768": lambda: SentenceTransformerEmbeddingFunction(
-            model_name="sentence-transformers/all-distilroberta-v1"
-        ),
-        "minilm-384": lambda: SentenceTransformerEmbeddingFunction(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        ),
-    }
-
-mcp_known_embedding_functions = create_local_embedding_functions()
+mcp_known_embedding_functions: Dict[str, EmbeddingFunction] = {
+    "default": DefaultEmbeddingFunction,
+    "cohere": CohereEmbeddingFunction,
+    "openai": OpenAIEmbeddingFunction,
+    "jina": JinaEmbeddingFunction,
+    "voyageai": VoyageAIEmbeddingFunction,
+    "roboflow": RoboflowEmbeddingFunction,
+}
 @mcp.tool()
 async def chroma_create_collection(
     collection_name: str,
     embedding_function_name: str = "default",
     metadata: Dict | None = None,
 ) -> str:
-    """Create a new Chroma collection with configurable embedding functions.
+    """Create a new Chroma collection with configurable HNSW parameters.
     
     Args:
         collection_name: Name of the collection to create
-        embedding_function_name: Name of the embedding function to use. Options: 'default' (384-dim), 'mpnet-768' (768-dim), 'bert-768' (768-dim), 'minilm-384' (384-dim)
+        embedding_function_name: Name of the embedding function to use. Options: 'default', 'cohere', 'openai', 'jina', 'voyageai', 'ollama', 'roboflow'
         metadata: Optional metadata dict to add to the collection
     """
     client = get_chroma_client()
@@ -639,3 +635,4 @@ def main():
     
 if __name__ == "__main__":
     main()
+
